@@ -41,8 +41,8 @@ steps:
           --ciphertext-file=hub.enc \
           --plaintext-file=/config/hub \
           --location=global \
-          --keyring=token \
-          --key=sample_key
+          --keyring=${_KMS_KEYRING} \
+          --key=${_KMS_KEY}
     volumes:
       - name: "config"
         path: /config
