@@ -72,6 +72,10 @@ steps:
            -f kubernetes/deployments/backend.yaml \
            -o jsonpath='{.spec.template.spec.containers[?(@.name == "koa-backend")].image}')
 
+        FRONTEND_CONTAINER_IMAGE=$(kubectl apply --dry-run \
+           -f kubernetes/deployments/frontend.yaml \
+           -o jsonpath='{.spec.template.spec.containers[?(@.name == "koa-frontend")].image}')
+
         ACTIVE_ACCOUNT=$(gcloud auth list --filter=status:ACTIVE --format="value(account)")
 
         hub config --global credential.https://github.com.helper /usr/local/bin/hub-credential-helper
@@ -79,11 +83,9 @@ steps:
         hub config --global user.email "$${ACTIVE_ACCOUNT}"
         hub config --global user.name "Google Container Builder"
 
-
-
         hub clone "https://github.com/${_GITHUB_USERNAME}/basic-app-infrastructure-production.git"
 
-        cat <<EOF > patch.yaml
+        cat <<EOF > backend-patch.yaml
         spec:
           template:
             spec:
@@ -92,12 +94,28 @@ steps:
                   image: $${CONTAINER_IMAGE}
         EOF
 
+        cat <<EOF > frontend-patch.yaml
+        spec:
+          template:
+            spec:
+              containers:
+                - name: koa-frontend
+                  image: $${FRONTEND_CONTAINER_IMAGE}
+        EOF
+
         kubectl patch --local -o yaml \
           -f basic-app-infrastructure-production/kubernetes/deployments/backend.yaml \
-          -p "$(cat patch.yaml)" \
+          -p "$(cat backend-patch.yaml)" \
           > backend.yaml
 
+        kubectl patch --local -o yaml \
+          -f basic-app-infrastructure-production/kubernetes/deployments/frontend.yaml \
+          -p "$(cat frontend-patch.yaml)" \
+          > frontend.yaml
+
         mv backend.yaml basic-app-infrastructure-production/kubernetes/deployments/backend.yaml
+
+        mv frontend.yaml basic-app-infrastructure-production/kubernetes/deployments/frontend.yaml
 
         cd basic-app-infrastructure-production
 
@@ -105,12 +123,14 @@ steps:
 
         hub add kubernetes/deployments/backend.yaml
 
+        hub add kubernetes/deployments/frontend.yaml
+
         hub commit -F- <<EOF
         Update the backend deployment ${SHORT_SHA}
 
-        This commit updates the backend deployment container image to:
+        This commit updates the backend & frontend deployment container image to:
 
-            $${CONTAINER_IMAGE}
+            $${CONTAINER_IMAGE} & $${FRONTEND_CONTAINER_IMAGE}
 
         Build ID: ${BUILD_ID}
         EOF
@@ -119,11 +139,11 @@ steps:
 
 
         hub pull-request -F- <<EOF
-        Update the backend deployment
+        Update the backend & frontend deployment
 
-        This commit updates the backend deployment container image to:
+        This commit updates the backend & frontend deployment container image to:
 
-            $${CONTAINER_IMAGE}
+            $${CONTAINER_IMAGE} && $${FRONTEND_CONTAINER_IMAGE}
 
         Build ID: ${BUILD_ID}
         EOF
